@@ -1,0 +1,10 @@
+.DS_Store
+.vscode
+ABX
+peqs/**
+venv
+*.zip
+*.tgz
+pPEQ
+pPEQ.zip
+pPEQ.spec

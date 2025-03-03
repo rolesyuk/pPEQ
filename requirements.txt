@@ -1,0 +1,8 @@
+PyQt6
+pyqtgraph
+scipy
+progressbar
+soundfile
+pyloudnorm
+sounddevice
+pyinstaller
