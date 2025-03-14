@@ -89,7 +89,7 @@ def check_download_extract_abx():
     return abx
 
 class FrequencyGrid():
-    def __init__(self, points=100, range=[20, 20000]):
+    def __init__(self, points=200, range=[20, 20000]):
         self.f = self.generate_frequency_grid(points, range)
         self.axis = [
             (20, '20'), (30, '30'), (40, '40'), (50, '50'), (60, '60'),
@@ -286,7 +286,7 @@ class ApoEQ():
 
         return 20 * np.log10(np.abs(rs)).sum(axis=0)
 
-    def calculate_peq(self, target):
+    def calculate_peq(self, target, tol):
         nb = len(self.freqs)
         div_f = 1000
         div_g = 10
@@ -297,14 +297,23 @@ class ApoEQ():
 
         bounds = [(20 / div_f, 15000 / div_f)] * nb + \
                  [(-12 / div_g, 12 / div_g)] * nb + \
-                 [(0.2 / div_q, 8 / div_q)] * nb + \
+                 [(0.5 / div_q, 2 / div_q)] * nb + \
                  [(-12 / div_g, 12 / div_g)]
+
+        # Fix shelf filters
+        bounds[0 * nb] = (105 / div_f, 105 / div_f)
+        bounds[1 * nb] = (0, 0)
+        bounds[2 * nb] = (0.7 / div_q, 0.7 / div_q)
+        bounds[1 * nb - 1] = (12000 / div_f, 12000 / div_f)
+        bounds[2 * nb - 1] = (0, 0)
+        bounds[3 * nb - 1] = (0.7 / div_q, 0.7 / div_q)
 
         x0 = np.hstack(freqs0 + [0.0] * nb + [0.7] * nb + [0.0])
 
-        f = frequency_grid.f[frequency_grid.f < 15000]
+        f = frequency_grid.f
         weights = np.ones_like(f)
-        weights[f > 10000] = 0.1
+        weights[f < 4000] = 10
+        weights[f > 9000] = 0.1
 
         def put_response_on_grid(f, response):
             response_on_grid = {
@@ -316,20 +325,24 @@ class ApoEQ():
         base_response = self.base_response.copy()
         target_response_on_grid = put_response_on_grid(f, target)
         base_response_on_grid = put_response_on_grid(f, self.base_response)
+        # Set target > 8kHz to the headphone response
+        target_response_on_grid['h'][f > 9000] = \
+            base_response_on_grid['h'][f > 9000]
 
         def loss(x):
             self.update_freqs_gains_qs(
                 div_f * x[0*nb:1*nb], div_g * x[1*nb:2*nb], div_q * x[2*nb:3*nb],
                 base_response_on_grid)
             error = self.response['h'] + div_g * x[-1] - target_response_on_grid['h']
-            high_freq_positive_penalty = (error[f > 10000] > 0).astype(int) + 1
-            error[f > 10000] *= high_freq_positive_penalty
             return (error**2 * weights).sum()
 
-        res = minimize(loss, x0, bounds=bounds, tol=1e-4,
+        res = minimize(loss, x0, bounds=bounds, tol=tol,
                        options=dict(maxls=100, maxiter=10000, maxfun=1000000))
         print(res)
         x = res.x
+
+        # Set high shelf to -12 by default
+        x[2 * nb - 1] = -12
 
         self.update_freqs_gains_qs(div_f * x[0*nb:1*nb],
                                    div_g * x[1*nb:2*nb],
@@ -486,7 +499,6 @@ class TbFilter():
         self.q = 0.39434525 # Default to 0.71 for disabled filter
         self.type = 0.21428572 # Analog bell
 
-
 class Preferences():
     def __init__(self, name):
         # Bass, Treble, Ear Gain
@@ -572,18 +584,18 @@ class TestCase():
         self.target_widgets.append(w)
         # Tilt
         w = QDoubleSpinBox()
-        w.setFixedWidth(100)
+        w.setFixedWidth(110)
         w.setSingleStep(0.1)
         w.setMaximum(5)
         w.setMinimum(-5)
         w.setDecimals(1)
-        w.setValue(-0.8)
+        w.setValue(-0.4)
         w.valueChanged.connect(self.update_and_draw_target)
         self.target_widgets.append(w)
         # Bass, Treble and Ear Gain
         for i in range(3):
             w = QDoubleSpinBox()
-            w.setFixedWidth(90)
+            w.setFixedWidth(110)
             w.setSingleStep(1)
             w.setMaximum(12)
             w.setMinimum(-12)
@@ -591,7 +603,7 @@ class TestCase():
             w.valueChanged.connect(self.update_and_draw_target)
             self.target_widgets.append(w)
         self.target_widgets[-3].blockSignals(True)
-        self.target_widgets[-3].setValue(5)
+        self.target_widgets[-3].setValue(6)
         self.target_widgets[-3].blockSignals(False)
         self.target_widgets[-2].blockSignals(True)
         self.target_widgets[-2].setValue(-3)
@@ -681,10 +693,16 @@ class TestCase():
 
     def export_peq(self):
         self.update_peq()
-        self.current_peq.export_peq(self.current_response['model'])
+        tilt     = int(np.abs(self.target_widgets[3].value()) * 10)
+        bass     = int(np.abs(self.target_widgets[4].value()))
+        treble   = int(np.abs(self.target_widgets[5].value()))
+        ear_gain = int(np.abs(self.target_widgets[6].value()))
+        self.current_peq.export_peq(self.current_response['model'] + \
+            ' {:d}{:d}{:d}{:d}'.format(tilt, bass, treble, ear_gain))
 
     def calculate_peq(self):
-        self.current_peq.calculate_peq(self.current_target)
+        tol = float(self.main_window.tolerance.currentText().split('=')[-1])
+        self.current_peq.calculate_peq(self.current_target, tol)
         for w, f in zip(self.peq_widgets[:-1], self.current_peq.freqs):
             w[0].blockSignals(True)
             w[0].setValue(int(f))
@@ -711,6 +729,7 @@ class MainWindow(QWidget):
         self.abx_process = None
         self.abx = check_download_extract_abx()
         self.response_recorder = ResponseRecorder(self)
+        self.tolerance = None
 
         self.init_gui()
 
@@ -734,6 +753,14 @@ class MainWindow(QWidget):
             layout_top.addWidget(w, 1, i)
         for i, w in enumerate(self.test_cases[1].target_widgets):
             layout_top.addWidget(w, 2, i)
+
+        self.tolerance = QComboBox()
+        self.tolerance.addItems(
+            ['tol=1e-{:d}'.format(x) for x in range(4, 10)])
+        self.tolerance.setEditable(True)
+        self.tolerance.lineEdit().setReadOnly(True)
+        self.tolerance.lineEdit().setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout_top.addWidget(self.tolerance, 0, i)
 
         layout_top.addItem(QSpacerItem(20, 1), 0, i + 1, 3, 1)
 
@@ -780,7 +807,6 @@ class MainWindow(QWidget):
             7 + 2 * len(self.test_cases[0].peq_widgets), 1, 1, 2)
         layout_peq.addWidget(self.response_recorder.record_response_button,
             8 + 2 * len(self.test_cases[0].peq_widgets), 0, 1, 3)
-
 
         layout_bottom.addWidget(self.plot_widget)
 
