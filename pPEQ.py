@@ -341,8 +341,8 @@ class ApoEQ():
         print(res)
         x = res.x
 
-        # Set high shelf to -12 by default
-        x[2 * nb - 1] = -12
+        # Set high shelf to -9 by default
+        x[2 * nb - 1] = -9 / div_g
 
         self.update_freqs_gains_qs(div_f * x[0*nb:1*nb],
                                    div_g * x[1*nb:2*nb],
@@ -573,14 +573,14 @@ class TestCase():
         w = QComboBox()
         w.setFixedWidth(230)
         w.addItems([x['name'] for x in self.targets.responses])
-        w.setCurrentText('5128 DF (HP)')
+        w.setCurrentText('JM-1 DF (IEM)')
         self.current_target = self.targets.get_by_name(w.currentText())
         w.currentTextChanged.connect(self.update_and_draw_target)
         self.target_widgets.append(w)
         w = QComboBox()
         w.setFixedWidth(230)
         w.addItems([x['name'] for x in self.responses.responses])
-        w.setCurrentText('Hifiman Edition XS, 5128')
+        w.setCurrentText('Sennheiser IE600, 5128')
         self.current_response = self.responses.get_by_name(w.currentText())
         w.currentTextChanged.connect(self.update_and_draw_response)
         self.target_widgets.append(w)
@@ -611,7 +611,7 @@ class TestCase():
         self.target_widgets[-2].setValue(-3)
         self.target_widgets[-2].blockSignals(False)
         self.target_widgets[-1].blockSignals(True)
-        self.target_widgets[-1].setValue(1)
+        self.target_widgets[-1].setValue(0)
         self.target_widgets[-1].blockSignals(False)
         # Calculate
         calculate_peq_button = QPushButton("Calculate PEQ")
