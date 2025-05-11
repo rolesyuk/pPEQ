@@ -297,7 +297,7 @@ class ApoEQ():
 
         bounds = [(20 / div_f, 15000 / div_f)] * nb + \
                  [(-12 / div_g, 12 / div_g)] * nb + \
-                 [(0.5 / div_q, 2 / div_q)] * nb + \
+                 [(0.5 / div_q, 7 / div_q)] * nb + \
                  [(-12 / div_g, 12 / div_g)]
 
         # Fix shelf filters
